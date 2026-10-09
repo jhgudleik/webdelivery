@@ -20,22 +20,13 @@
                 <div class="list-group list-group-flush">
                     <a href="{{ route('catalog.index') }}"
                        class="list-group-item list-group-item-action {{ !$currentCategory ? 'active' : '' }}">
+                        <i class="fas fa-border-all me-1" style="font-size: 0.7rem; opacity: 0.5;"></i>
                         Все товары
                     </a>
-                    @foreach($categories as $cat)
-                        <a href="{{ route('catalog.index', ['category' => $cat['slug'] ?? $cat['id'] ?? '']) }}"
-                           class="list-group-item list-group-item-action {{ $currentCategory === ($cat['slug'] ?? '') ? 'active' : '' }}">
-                            {{ $cat['title'] ?? '' }}
-                        </a>
-                        @if(!empty($cat['children']))
-                            @foreach($cat['children'] as $child)
-                                <a href="{{ route('catalog.index', ['category' => $child['slug'] ?? $child['id'] ?? '']) }}"
-                                   class="list-group-item list-group-item-action ps-4 {{ $currentCategory === ($child['slug'] ?? '') ? 'active' : '' }}">
-                                    {{ $child['title'] ?? '' }}
-                                </a>
-                            @endforeach
-                        @endif
-                    @endforeach
+                    @include('catalog.partials.category-tree', [
+                        'categories' => $categoryTree,
+                        'depth' => 0,
+                    ])
                 </div>
             </div>
         </div>
@@ -89,7 +80,7 @@
                     @endforeach
                 </div>
 
-                {{-- Простая пагинация --}}
+                {{-- Пагинация --}}
                 @if(!empty($meta['last_page']) && $meta['last_page'] > 1)
                     <nav aria-label="Навигация по страницам" class="mt-3">
                         <ul class="pagination justify-content-center">
@@ -104,7 +95,11 @@
             @else
                 <div class="alert alert-info">
                     <i class="fas fa-info-circle me-2"></i>
-                    Товары не найдены. Попробуйте позже или проверьте подключение к магазину.
+                    @if($currentCategory)
+                        В этой категории пока нет товаров.
+                    @else
+                        Товары не найдены. Попробуйте позже или проверьте подключение к магазину.
+                    @endif
                 </div>
             @endif
         </div>

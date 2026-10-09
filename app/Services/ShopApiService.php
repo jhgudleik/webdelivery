@@ -172,6 +172,67 @@ class ShopApiService
         return array_map(fn ($p) => $this->normalizeProduct($p), $products);
     }
 
+    /**
+     * Построить дерево категорий из плоского массива API.
+     *
+     * API может вернуть:
+     * - плоский массив с parent_id (рекурсия до 4 уровней)
+     * - уже вложенный массив с children
+     */
+    public function buildCategoryTree(array $categories, int $maxDepth = 4): array
+    {
+        // Если категории уже содержат children — возвращаем как есть (обрезаем глубину)
+        if (isset($categories[0]['children'])) {
+            return $this->limitTreeDepth($categories, $maxDepth);
+        }
+
+        // Строим дерево из плоского массива по parent_id
+        $indexed = [];
+        foreach ($categories as $cat) {
+            $id = $cat['id'] ?? $cat['slug'] ?? null;
+            if ($id !== null) {
+                $cat['children'] = [];
+                $indexed[$id] = $cat;
+            }
+        }
+
+        $tree = [];
+        foreach ($indexed as &$cat) {
+            $parentId = $cat['parent_id'] ?? null;
+            if ($parentId && isset($indexed[$parentId])) {
+                $indexed[$parentId]['children'][] = &$cat;
+            } else {
+                $tree[] = &$cat;
+            }
+        }
+        unset($cat);
+
+        return $this->limitTreeDepth($tree, $maxDepth);
+    }
+
+    /**
+     * Обрезать вложенность дерева до N уровней.
+     */
+    protected function limitTreeDepth(array $tree, int $maxDepth, int $current = 1): array
+    {
+        if ($current >= $maxDepth) {
+            foreach ($tree as &$cat) {
+                $cat['children'] = [];
+            }
+            unset($cat);
+            return $tree;
+        }
+
+        foreach ($tree as &$cat) {
+            if (!empty($cat['children'])) {
+                $cat['children'] = $this->limitTreeDepth($cat['children'], $maxDepth, $current + 1);
+            }
+        }
+        unset($cat);
+
+        return $tree;
+    }
+
     // ─── API методы ─────────────────────────────────────
 
     /**
@@ -200,25 +261,28 @@ class ShopApiService
 
     /**
      * Список товаров с пагинацией.
+     *
+     * Если API магазина не поддерживает фильтрацию по категории,
+     * фильтрация выполняется локально.
      */
     public function getProducts(int $page = 1, int $perPage = 12, ?string $categorySlug = null): array
     {
         try {
+            // Если нужна фильтрация — загружаем все товары и фильтруем локально
+            if ($categorySlug) {
+                return $this->getProductsFiltered($categorySlug, $page, $perPage);
+            }
+
             $params = [
                 'page'     => $page,
                 'per_page' => $perPage,
             ];
-
-            if ($categorySlug) {
-                $params['category'] = $categorySlug;
-            }
 
             $response = $this->get("{$this->baseUrl}/api/products", $params);
 
             if ($response && $response->successful()) {
                 $data = $response->json();
 
-                // Нормализуем ответ (магазин может отдавать по-разному)
                 if (isset($data['data']) && isset($data['current_page'])) {
                     return [
                         'data' => $this->normalizeProducts($data['data']),
@@ -258,6 +322,63 @@ class ShopApiService
             Log::error('ShopAPI: products error', ['message' => $e->getMessage()]);
             return ['data' => [], 'meta' => []];
         }
+    }
+
+    /**
+     * Загрузить все товары, отфильтровать по категории и вернуть с пагинацией.
+     */
+    protected function getProductsFiltered(string $categorySlug, int $page, int $perPage): array
+    {
+        // Загружаем все товары (по страницам API)
+        $allProducts = [];
+        $apiPage = 1;
+
+        do {
+            $response = $this->get("{$this->baseUrl}/api/products", [
+                'page'     => $apiPage,
+                'per_page' => 100,
+            ]);
+
+            if (!$response || !$response->successful()) {
+                break;
+            }
+
+            $data = $response->json();
+            $items = $data['data'] ?? $data;
+            if (isset($items['data'])) {
+                $items = $items['data'];
+            }
+
+            if (empty($items)) {
+                break;
+            }
+
+            $allProducts = array_merge($allProducts, $items);
+            $lastPage = $data['last_page'] ?? $data['data']['last_page'] ?? 1;
+            $apiPage++;
+        } while ($apiPage <= $lastPage);
+
+        // Фильтруем по slug категории (включая подкатегории — проверяем category.slug)
+        $filtered = array_values(array_filter($allProducts, function ($product) use ($categorySlug) {
+            $catSlug = $product['category']['slug'] ?? $product['category_slug'] ?? '';
+            return $catSlug === $categorySlug;
+        }));
+
+        // Локальная пагинация
+        $total = count($filtered);
+        $lastPageNum = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $lastPageNum);
+        $sliced = array_slice($filtered, ($page - 1) * $perPage, $perPage);
+
+        return [
+            'data' => $this->normalizeProducts($sliced),
+            'meta' => [
+                'current_page' => $page,
+                'last_page'    => $lastPageNum,
+                'per_page'     => $perPage,
+                'total'        => $total,
+            ],
+        ];
     }
 
     /**

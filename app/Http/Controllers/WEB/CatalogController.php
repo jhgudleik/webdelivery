@@ -15,13 +15,17 @@ class CatalogController extends Controller
         $categorySlug = $request->query('category');
 
         $result = $shopApi->getProducts($page, 12, $categorySlug);
-        $categories = $shopApi->getCategories();
+        $rawCategories = $shopApi->getCategories();
+        $categoryTree = $shopApi->buildCategoryTree($rawCategories);
+
+        // Определяем текущую категорию для подсветки
+        $currentCategorySlug = $categorySlug;
 
         return view('catalog.index', [
-            'products'   => $result['data'] ?? [],
-            'meta'       => $result['meta'] ?? [],
-            'categories' => $categories,
-            'currentCategory' => $categorySlug,
+            'products'           => $result['data'] ?? [],
+            'meta'               => $result['meta'] ?? [],
+            'categoryTree'       => $categoryTree,
+            'currentCategory'    => $currentCategorySlug,
         ]);
     }
 
