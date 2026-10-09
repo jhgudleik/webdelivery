@@ -67,7 +67,7 @@
 @if(!empty($products))
     <div class="mb-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h3 class="fw-bold"><i class="fas fa-fire me-2 text-danger"></i>Товары из магазина</h3>
+            <h3 class="fw-bold"><i class="fas fa-fire me-2 text-danger"></i>Популярные товары</h3>
             <a href="{{ route('catalog.index') }}" class="btn btn-outline-primary btn-sm">
                 Все товары <i class="fas fa-arrow-right ms-1"></i>
             </a>

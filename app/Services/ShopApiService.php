@@ -121,6 +121,57 @@ class ShopApiService
         return null;
     }
 
+    // ─── Нормализация данных ─────────────────────────────
+
+    /**
+     * Преобразовать относительный путь картинки в абсолютный URL магазина.
+     *
+     * Laravel хранит файлы в storage/app/public/, а отдаёт через симлинк public/storage/.
+     * API возвращает путь вроде "products/xxx.jpg", а нужен URL "storage/products/xxx.jpg".
+     */
+    protected function resolveImageUrl(?string $image): ?string
+    {
+        if (!$image) {
+            return null;
+        }
+
+        // Уже абсолютный URL — возвращаем как есть
+        if (str_starts_with($image, 'http://') || str_starts_with($image, 'https://')) {
+            return $image;
+        }
+
+        $image = ltrim($image, '/');
+
+        // Если путь уже начинается с storage/ — просто добавляем базовый URL
+        if (str_starts_with($image, 'storage/')) {
+            return $this->baseUrl . '/' . $image;
+        }
+
+        // Иначе — это путь относительно storage/app/public/,
+        // добавляем префикс storage/
+        return $this->baseUrl . '/storage/' . $image;
+    }
+
+    /**
+     * Нормализовать данные товара (подставить абсолютные URL картинок).
+     */
+    protected function normalizeProduct(array $product): array
+    {
+        if (isset($product['image'])) {
+            $product['image'] = $this->resolveImageUrl($product['image']);
+        }
+
+        return $product;
+    }
+
+    /**
+     * Нормализовать массив товаров.
+     */
+    protected function normalizeProducts(array $products): array
+    {
+        return array_map(fn ($p) => $this->normalizeProduct($p), $products);
+    }
+
     // ─── API методы ─────────────────────────────────────
 
     /**
@@ -170,7 +221,7 @@ class ShopApiService
                 // Нормализуем ответ (магазин может отдавать по-разному)
                 if (isset($data['data']) && isset($data['current_page'])) {
                     return [
-                        'data' => $data['data'],
+                        'data' => $this->normalizeProducts($data['data']),
                         'meta' => [
                             'current_page' => $data['current_page'],
                             'last_page'    => $data['last_page'],
@@ -182,7 +233,7 @@ class ShopApiService
 
                 if (isset($data['data']['data'])) {
                     return [
-                        'data' => $data['data']['data'],
+                        'data' => $this->normalizeProducts($data['data']['data']),
                         'meta' => [
                             'current_page' => $data['data']['current_page'] ?? 1,
                             'last_page'    => $data['data']['last_page'] ?? 1,
@@ -193,7 +244,7 @@ class ShopApiService
                 }
 
                 return [
-                    'data' => $data['data'] ?? $data,
+                    'data' => $this->normalizeProducts($data['data'] ?? $data),
                     'meta' => [],
                 ];
             }
@@ -219,7 +270,8 @@ class ShopApiService
 
             if ($response && $response->successful()) {
                 $data = $response->json();
-                return $data['data'] ?? $data;
+                $product = $data['data'] ?? $data;
+                return $this->normalizeProduct($product);
             }
 
             Log::warning('ShopAPI: failed to fetch product', [
