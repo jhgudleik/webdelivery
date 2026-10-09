@@ -4,6 +4,7 @@ namespace App\Http\Controllers\WEB\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Delivery;
+use App\Services\ShopApiService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -63,18 +64,39 @@ class DeliveryController extends Controller
 
     /**
      * Update delivery status and admin comment.
+     * When status changes to "confirmed" — reduce product stock on external shop.
      */
-    public function updateStatus(Request $request, Delivery $delivery): RedirectResponse
+    public function updateStatus(Request $request, Delivery $delivery, ShopApiService $shopApi): RedirectResponse
     {
         $validated = $request->validate([
             'status'        => ['required', 'string', 'in:new,confirmed,shipped,delivered,cancelled'],
             'admin_comment' => ['nullable', 'string', 'max:1000'],
         ]);
 
+        $oldStatus = $delivery->status;
+        $newStatus = $validated['status'];
+
         $delivery->update([
-            'status'        => $validated['status'],
+            'status'        => $newStatus,
             'admin_comment' => $validated['admin_comment'] ?? $delivery->admin_comment,
         ]);
+
+        // При подтверждении — списываем остатки на складе магазина
+        if ($newStatus === 'confirmed' && $oldStatus !== 'confirmed') {
+            $delivery->load('items');
+            $result = $shopApi->reduceDeliveryStock($delivery);
+
+            if (!$result['success']) {
+                $errorMsg = 'Статус обновлён, но есть ошибки при списании остатков: ' . implode('; ', $result['errors']);
+                return redirect()
+                    ->route('admin.deliveries.show', $delivery)
+                    ->with('warning', $errorMsg);
+            }
+
+            return redirect()
+                ->route('admin.deliveries.show', $delivery)
+                ->with('success', 'Статус обновлён. Остатки на складе магазина списаны.');
+        }
 
         return redirect()
             ->route('admin.deliveries.show', $delivery)

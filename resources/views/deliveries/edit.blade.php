@@ -76,6 +76,7 @@
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </div>
+                                <input type="hidden" name="items[{{ $i }}][product_id]" value="{{ $item->product_id ?? '' }}">
                                 <div class="row g-2">
                                     <div class="col-md-5">
                                         <input type="text" class="form-control form-control-sm"
@@ -120,7 +121,7 @@
     <script>
         let itemIndex = {{ $delivery->items->count() }};
 
-        function addItem(title = '', sku = '', quantity = 1, price = '') {
+        function addItem(title = '', sku = '', quantity = 1, price = '', productId = '') {
             const html = `
                 <div class="border rounded-3 p-3 mb-3 item-row">
                     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -129,6 +130,7 @@
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
+                    <input type="hidden" name="items[${itemIndex}][product_id]" value="${productId}">
                     <div class="row g-2">
                         <div class="col-md-5">
                             <input type="text" class="form-control form-control-sm"

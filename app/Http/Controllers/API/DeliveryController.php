@@ -38,6 +38,7 @@ class DeliveryController extends Controller
             'delivery_address' => ['required', 'string', 'max:500'],
             'phone'            => ['required', 'string', 'max:20'],
             'items'            => ['required', 'array', 'min:1'],
+            'items.*.product_id'    => ['nullable', 'integer'],
             'items.*.product_title' => ['required', 'string', 'max:255'],
             'items.*.product_sku'   => ['nullable', 'string', 'max:100'],
             'items.*.quantity'      => ['required', 'integer', 'min:1'],
@@ -54,6 +55,7 @@ class DeliveryController extends Controller
 
         foreach ($validated['items'] as $item) {
             $delivery->items()->create([
+                'product_id'    => $item['product_id'] ?? null,
                 'product_title' => $item['product_title'],
                 'product_sku'   => $item['product_sku'] ?? null,
                 'quantity'      => $item['quantity'],
@@ -116,6 +118,7 @@ class DeliveryController extends Controller
             'delivery_address' => ['required', 'string', 'max:500'],
             'phone'            => ['required', 'string', 'max:20'],
             'items'            => ['required', 'array', 'min:1'],
+            'items.*.product_id'    => ['nullable', 'integer'],
             'items.*.product_title' => ['required', 'string', 'max:255'],
             'items.*.product_sku'   => ['nullable', 'string', 'max:100'],
             'items.*.quantity'      => ['required', 'integer', 'min:1'],
@@ -132,6 +135,7 @@ class DeliveryController extends Controller
         $delivery->items()->delete();
         foreach ($validated['items'] as $item) {
             $delivery->items()->create([
+                'product_id'    => $item['product_id'] ?? null,
                 'product_title' => $item['product_title'],
                 'product_sku'   => $item['product_sku'] ?? null,
                 'quantity'      => $item['quantity'],

@@ -406,4 +406,107 @@ class ShopApiService
             return null;
         }
     }
+
+    // ─── HTTP PUT ────────────────────────────────────────
+
+    /**
+     * Выполнить PUT-запрос с автоматическим логином и retry при 401.
+     */
+    protected function put(string $url, array $data = []): \Illuminate\Http\Client\Response|null
+    {
+        $token = $this->getToken();
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $client = Http::timeout($this->timeout)
+                ->withHeaders([
+                    'Accept'       => 'application/json',
+                    'Content-Type' => 'application/json',
+                ]);
+
+            if ($token) {
+                $client = $client->withToken($token);
+            }
+
+            $response = $client->put($url, $data);
+
+            if ($response->status() === 401 && $attempt === 0) {
+                $this->invalidateToken();
+                $token = $this->login();
+                continue;
+            }
+
+            return $response;
+        }
+
+        return null;
+    }
+
+    /**
+     * Уменьшить количество товара на складе внешнего магазина.
+     */
+    public function reduceProductQuantity(int $productId, int $quantity): bool
+    {
+        $product = $this->getProduct($productId);
+
+        if (!$product) {
+            Log::warning("ShopAPI: product #{$productId} not found for stock reduction");
+            return false;
+        }
+
+        $currentQty = (int) ($product['quantity'] ?? 0);
+        $newQty = max(0, $currentQty - $quantity);
+
+        // API требует title и price — отправляем все поля товара
+        $updateData = [
+            'title'       => $product['title'],
+            'price'       => $product['price'],
+            'quantity'    => $newQty,
+            'category_id' => $product['category_id'] ?? $product['category']['id'] ?? null,
+            'active'      => $product['active'] ?? true,
+        ];
+
+        if (!empty($product['description'])) {
+            $updateData['description'] = $product['description'];
+        }
+
+        $response = $this->put("{$this->baseUrl}/api/products/{$productId}", $updateData);
+
+        if ($response && $response->successful()) {
+            Log::info("ShopAPI: product #{$productId} quantity reduced {$currentQty} → {$newQty}");
+            return true;
+        }
+
+        Log::error("ShopAPI: failed to reduce product #{$productId} quantity", [
+            'status' => $response?->status(),
+            'body'   => $response?->body(),
+        ]);
+
+        return false;
+    }
+
+    /**
+     * Списать остатки по всем товарам доставки.
+     */
+    public function reduceDeliveryStock(\App\Models\Delivery $delivery): array
+    {
+        $errors = [];
+
+        foreach ($delivery->items as $item) {
+            if (!$item->product_id) {
+                $errors[] = "Товар «{$item->product_title}» не привязан к магазину (нет product_id)";
+                continue;
+            }
+
+            $ok = $this->reduceProductQuantity($item->product_id, $item->quantity);
+
+            if (!$ok) {
+                $errors[] = "Не удалось списать остатки для «{$item->product_title}» (ID: {$item->product_id})";
+            }
+        }
+
+        return [
+            'success' => empty($errors),
+            'errors'  => $errors,
+        ];
+    }
 }

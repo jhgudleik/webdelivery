@@ -47,7 +47,7 @@
 
             <div class="d-flex gap-2">
                 @auth
-                    <a href="{{ route('deliveries.create') }}?product_title={{ urlencode($product['title'] ?? '') }}&price={{ urlencode($product['price'] ?? '') }}" class="btn btn-primary btn-lg">
+                    <a href="{{ route('deliveries.create') }}?product_id={{ urlencode($product['id'] ?? '') }}&product_title={{ urlencode($product['title'] ?? '') }}&price={{ urlencode($product['price'] ?? '') }}" class="btn btn-primary btn-lg">
                         <i class="fas fa-truck me-2"></i>Заказать доставку
                     </a>
                 @else

@@ -28,7 +28,7 @@ class DeliverySeeder extends Seeder
                 'phone'            => '+7 (999) 111-22-33',
                 'status'           => 'confirmed',
                 'items'            => [
-                    ['product_title' => 'Смартфон iPhone 15', 'product_sku' => 'APL-IP15', 'quantity' => 1, 'price' => 89990.00],
+                    ['product_id' => 1, 'product_title' => 'Смартфон iPhone 15', 'product_sku' => 'APL-IP15', 'quantity' => 1, 'price' => 89990.00],
                     ['product_title' => 'Чехол силиконовый', 'product_sku' => 'ACC-001', 'quantity' => 2, 'price' => 1500.00],
                 ],
             ],

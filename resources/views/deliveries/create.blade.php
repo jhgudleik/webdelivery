@@ -95,10 +95,11 @@
 
         // Pre-fill from query params (when coming from catalog)
         const params = new URLSearchParams(window.location.search);
+        const preId = params.get('product_id');
         const preTitle = params.get('product_title');
         const prePrice = params.get('price');
 
-        function addItem(title = '', sku = '', quantity = 1, price = '') {
+        function addItem(title = '', sku = '', quantity = 1, price = '', productId = '') {
             const html = `
                 <div class="border rounded-3 p-3 mb-3 item-row" data-index="${itemIndex}">
                     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -107,6 +108,7 @@
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
+                    <input type="hidden" name="items[${itemIndex}][product_id]" value="${productId}">
                     <div class="row g-2">
                         <div class="col-md-5">
                             <input type="text" class="form-control form-control-sm"
@@ -144,7 +146,7 @@
         });
 
         // Add first item (pre-filled if coming from catalog)
-        addItem(preTitle || '', '', 1, prePrice || '');
+        addItem(preTitle || '', '', 1, prePrice || '', preId || '');
     </script>
     @endpush
 @endsection
