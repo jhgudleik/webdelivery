@@ -2,15 +2,27 @@
 
 namespace Tests\Feature;
 
-// use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_home_page_returns_successful_response(): void
     {
-        $response = $this->get('/');
+        $this->get('/')->assertOk();
+    }
 
-        $response->assertStatus(200);
+    public function test_catalog_page_returns_successful_response(): void
+    {
+        $this->get('/catalog')->assertOk();
+    }
+
+    public function test_login_page_returns_successful_response(): void
+    {
+        $this->get('/login')->assertOk();
+    }
+
+    public function test_register_page_returns_successful_response(): void
+    {
+        $this->get('/register')->assertOk();
     }
 }

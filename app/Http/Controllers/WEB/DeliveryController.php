@@ -116,7 +116,7 @@ class DeliveryController extends Controller
     /**
      * Show edit form.
      */
-    public function edit(Delivery $delivery): View
+    public function edit(Delivery $delivery): \Illuminate\Http\RedirectResponse|View
     {
         if ($delivery->user_id !== Auth::id()) {
             abort(403);
