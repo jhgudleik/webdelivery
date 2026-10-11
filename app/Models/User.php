@@ -2,18 +2,28 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
+/**
+ * Пользователь сервиса доставки.
+ *
+ * Роли отдельной таблицей не заведены (ограничение MVP):
+ * роль определяет булево поле is_admin:
+ *   false — обычный пользователь (по умолчанию),
+ *   true  — администратор (доступ в /admin/*, проверяет CheckIfAdmin).
+ *
+ * Модель реализует JWTSubject — нужно для API-авторизации
+ * через tymon/jwt-auth (guard "api").
+ */
 class User extends Authenticatable implements JWTSubject
 {
     use HasFactory, Notifiable;
 
     /**
-     * The attributes that are mass assignable.
+     * Поля, разрешённые для массового заполнения.
      *
      * @var list<string>
      */
@@ -21,12 +31,12 @@ class User extends Authenticatable implements JWTSubject
         'name',
         'email',
         'password',
-        'avatar',
-        'is_admin',
+        'avatar',    // путь к файлу в storage/app/public/avatars
+        'is_admin',  // роль: администратор или обычный пользователь
     ];
 
     /**
-     * The attributes that should be hidden for serialization.
+     * Поля, скрытые при сериализации (не попадут в JSON).
      *
      * @var list<string>
      */
@@ -36,7 +46,9 @@ class User extends Authenticatable implements JWTSubject
     ];
 
     /**
-     * Get the attributes that should be cast.
+     * Приведение типов.
+     * 'password' => 'hashed' — Laravel сам хеширует пароль при присвоении,
+     * поэтому Hash::make() в контроллерах не обязателен.
      *
      * @return array<string, string>
      */
@@ -49,13 +61,20 @@ class User extends Authenticatable implements JWTSubject
         ];
     }
 
-    // ─── JWT ──────────────────────────────────────────────
+    // ─── JWT (tymon/jwt-auth) ───────────────────────────
 
+    /**
+     * Идентификатор, который попадёт в claim "sub" токена.
+     */
     public function getJWTIdentifier()
     {
         return $this->getKey();
     }
 
+    /**
+     * Дополнительные claims токена: кладём флаг админа,
+     * чтобы API-клиент мог узнать роль без лишнего запроса.
+     */
     public function getJWTCustomClaims(): array
     {
         return [
@@ -63,8 +82,11 @@ class User extends Authenticatable implements JWTSubject
         ];
     }
 
-    // ─── Relationships ────────────────────────────────────
+    // ─── Связи ──────────────────────────────────────────
 
+    /**
+     * Заявки на доставку этого пользователя.
+     */
     public function deliveries()
     {
         return $this->hasMany(Delivery::class);

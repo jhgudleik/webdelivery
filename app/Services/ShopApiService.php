@@ -6,15 +6,38 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Клиент для работы с API внешнего интернет-магазина.
+ *
+ * Зона ответственности:
+ *   1. Авторизация: логинится по email/password из .env,
+ *      кеширует JWT-токен и автоматически обновляет его при 401.
+ *   2. Каталог: категории (дерево до 4 уровней) и товары
+ *      с нормализацией URL картинок.
+ *   3. Списание остатков: при подтверждении заявки уменьшает
+ *      quantity товаров в магазине через PUT /api/products/{id}.
+ *
+ * Зарегистрирован как singleton в AppServiceProvider,
+ * поэтому внедряется в контроллеры через DI.
+ */
 class ShopApiService
 {
+    /** Базовый URL магазина без завершающего слеша (например, http://localhost:8001) */
     private string $baseUrl;
+
+    /** Учётные данные для логина в магазин (из .env: SHOP_API_EMAIL / SHOP_API_PASSWORD) */
     private ?string $email;
     private ?string $password;
+
+    /** Таймаут HTTP-запросов в секундах */
     private int $timeout;
 
+    /** Ключ, под которым JWT-токен хранится в кеше */
     private const TOKEN_CACHE_KEY = 'shop_api_jwt_token';
-    private const TOKEN_CACHE_TTL = 55; // минут (JWT обычно живёт 60 мин)
+
+    /** Время жизни токена в кеше (мин). Чуть меньше TTL самого JWT (обычно 60 мин),
+     *  чтобы не поймать протухший токен на границе */
+    private const TOKEN_CACHE_TTL = 55;
 
     public function __construct()
     {
@@ -27,7 +50,9 @@ class ShopApiService
     // ─── Авторизация ────────────────────────────────────
 
     /**
-     * Получить JWT-токен (из кеша или через логин).
+     * Получить JWT-токен: сначала из кеша, иначе — залогиниться заново.
+     *
+     * @return string|null  токен или null, если логин невозможен
      */
     protected function getToken(): ?string
     {
@@ -41,7 +66,11 @@ class ShopApiService
     }
 
     /**
-     * Залогиниться в магазине и закешировать токен.
+     * Залогиниться в магазине (POST /api/auth/login) и закешировать токен.
+     *
+     * Поддерживает два формата ответа: { access_token } и { token }.
+     * При любой ошибке пишет в лог и возвращает null — вызывающий код
+     * в этом случае просто покажет «каталог недоступен».
      */
     protected function login(): ?string
     {
@@ -63,6 +92,7 @@ class ShopApiService
                 $token = $data['access_token'] ?? $data['token'] ?? null;
 
                 if ($token) {
+                    // Кладём токен в кеш на 55 минут
                     Cache::put(self::TOKEN_CACHE_KEY, $token, now()->addMinutes(self::TOKEN_CACHE_TTL));
                     Log::info('ShopAPI: login successful, token cached');
                     return $token;
@@ -76,13 +106,15 @@ class ShopApiService
 
             return null;
         } catch (\Exception $e) {
+            // Сюда попадаем, если магазин вообще недоступен (таймаут, connection refused)
             Log::error('ShopAPI: login error', ['message' => $e->getMessage()]);
             return null;
         }
     }
 
     /**
-     * Сбросить кеш токена (при 401).
+     * Удалить токен из кеша. Вызывается при ответе 401 —
+     * после этого getToken() выполнит свежий логин.
      */
     protected function invalidateToken(): void
     {
@@ -92,7 +124,12 @@ class ShopApiService
     // ─── HTTP-клиент ────────────────────────────────────
 
     /**
-     * Выполнить GET-запрос с автоматическим логином и retry при 401.
+     * GET-запрос к магазину с Bearer-токеном и одним retry при 401.
+     *
+     * Схема: токен из кеша → запрос → если 401, сбрасываем кеш,
+     * логинимся заново и повторяем запрос один раз.
+     *
+     * @return \Illuminate\Http\Client\Response|null  null — если обе попытки не удались
      */
     protected function get(string $url, array $params = []): \Illuminate\Http\Client\Response|null
     {
@@ -109,7 +146,7 @@ class ShopApiService
             $response = $client->get($url, $params);
 
             if ($response->status() === 401 && $attempt === 0) {
-                // Токен протух — логинимся заново
+                // Токен протух (или был отозван) — перелогиниваемся и повторяем
                 $this->invalidateToken();
                 $token = $this->login();
                 continue;
@@ -126,8 +163,10 @@ class ShopApiService
     /**
      * Преобразовать относительный путь картинки в абсолютный URL магазина.
      *
-     * Laravel хранит файлы в storage/app/public/, а отдаёт через симлинк public/storage/.
-     * API возвращает путь вроде "products/xxx.jpg", а нужен URL "storage/products/xxx.jpg".
+     * Контекст: Laravel хранит файлы в storage/app/public/, а раздаёт
+     * через симлинк public/storage/. API магазина возвращает внутренний
+     * путь вроде "products/xxx.jpg", а браузеру нужен полный URL:
+     *   "products/xxx.jpg" → "http://localhost:8001/storage/products/xxx.jpg"
      */
     protected function resolveImageUrl(?string $image): ?string
     {
@@ -147,13 +186,12 @@ class ShopApiService
             return $this->baseUrl . '/' . $image;
         }
 
-        // Иначе — это путь относительно storage/app/public/,
-        // добавляем префикс storage/
+        // Иначе это путь относительно storage/app/public/ — добавляем префикс storage/
         return $this->baseUrl . '/storage/' . $image;
     }
 
     /**
-     * Нормализовать данные товара (подставить абсолютные URL картинок).
+     * Нормализовать один товар: заменить относительный путь картинки на абсолютный.
      */
     protected function normalizeProduct(array $product): array
     {
@@ -165,7 +203,7 @@ class ShopApiService
     }
 
     /**
-     * Нормализовать массив товаров.
+     * Нормализовать массив товаров (применить normalizeProduct к каждому).
      */
     protected function normalizeProducts(array $products): array
     {
@@ -173,20 +211,22 @@ class ShopApiService
     }
 
     /**
-     * Построить дерево категорий из плоского массива API.
+     * Построить дерево категорий из ответа API.
      *
-     * API может вернуть:
-     * - плоский массив с parent_id (рекурсия до 4 уровней)
-     * - уже вложенный массив с children
+     * API может вернуть два формата:
+     *   1. Плоский массив с полем parent_id — собираем дерево по ссылкам.
+     *   2. Уже вложенный массив с children — только обрезаем глубину.
+     *
+     * Глубина ограничена $maxDepth (по ТЗ — 4 уровня).
      */
     public function buildCategoryTree(array $categories, int $maxDepth = 4): array
     {
-        // Если категории уже содержат children — возвращаем как есть (обрезаем глубину)
+        // Формат 2: children уже есть — просто ограничиваем глубину
         if (isset($categories[0]['children'])) {
             return $this->limitTreeDepth($categories, $maxDepth);
         }
 
-        // Строим дерево из плоского массива по parent_id
+        // Формат 1: индексируем категории по id (или slug, если id нет)
         $indexed = [];
         foreach ($categories as $cat) {
             $id = $cat['id'] ?? $cat['slug'] ?? null;
@@ -196,6 +236,8 @@ class ShopApiService
             }
         }
 
+        // Раскладываем: у кого есть родитель — в его children, остальные — в корень.
+        // Работаем по ссылке (&$cat), чтобы children заполнялись «на месте».
         $tree = [];
         foreach ($indexed as &$cat) {
             $parentId = $cat['parent_id'] ?? null;
@@ -205,13 +247,14 @@ class ShopApiService
                 $tree[] = &$cat;
             }
         }
-        unset($cat);
+        unset($cat); // обязательно сбрасываем ссылку после foreach by-reference
 
         return $this->limitTreeDepth($tree, $maxDepth);
     }
 
     /**
-     * Обрезать вложенность дерева до N уровней.
+     * Рекурсивно обрезать вложенность дерева до $maxDepth уровней.
+     * Узлы на максимальной глубине лишаются children.
      */
     protected function limitTreeDepth(array $tree, int $maxDepth, int $current = 1): array
     {
@@ -236,7 +279,8 @@ class ShopApiService
     // ─── API методы ─────────────────────────────────────
 
     /**
-     * Категории из внешнего магазина.
+     * Получить список категорий из магазина (плоский, как отдал API).
+     * При ошибке возвращает пустой массив — сайдбар просто будет пустым.
      */
     public function getCategories(): array
     {
@@ -245,6 +289,7 @@ class ShopApiService
 
             if ($response && $response->successful()) {
                 $data = $response->json();
+                // API может оборачивать массив в ключ data — разворачиваем
                 return $data['data'] ?? $data;
             }
 
@@ -260,15 +305,18 @@ class ShopApiService
     }
 
     /**
-     * Список товаров с пагинацией.
+     * Получить список товаров с пагинацией.
      *
-     * Если API магазина не поддерживает фильтрацию по категории,
-     * фильтрация выполняется локально.
+     * Возвращает структуру ['data' => [...товары], 'meta' => [...пагинация]].
+     *
+     * Особенность: API магазина игнорирует параметр фильтрации по категории,
+     * поэтому при переданном $categorySlug используется getProductsFiltered() —
+     * загрузка всех товаров и фильтрация на нашей стороне.
      */
     public function getProducts(int $page = 1, int $perPage = 12, ?string $categorySlug = null): array
     {
         try {
-            // Если нужна фильтрация — загружаем все товары и фильтруем локально
+            // Фильтрация — отдельная ветка с локальной обработкой
             if ($categorySlug) {
                 return $this->getProductsFiltered($categorySlug, $page, $perPage);
             }
@@ -283,6 +331,8 @@ class ShopApiService
             if ($response && $response->successful()) {
                 $data = $response->json();
 
+                // Формат 1: пагинация Laravel на верхнем уровне
+                // { data: [...], current_page, last_page, per_page, total }
                 if (isset($data['data']) && isset($data['current_page'])) {
                     return [
                         'data' => $this->normalizeProducts($data['data']),
@@ -295,6 +345,8 @@ class ShopApiService
                     ];
                 }
 
+                // Формат 2: пагинация вложена внутрь data
+                // { data: { data: [...], current_page, ... } }
                 if (isset($data['data']['data'])) {
                     return [
                         'data' => $this->normalizeProducts($data['data']['data']),
@@ -307,6 +359,7 @@ class ShopApiService
                     ];
                 }
 
+                // Формат 3: просто массив без метаданных
                 return [
                     'data' => $this->normalizeProducts($data['data'] ?? $data),
                     'meta' => [],
@@ -325,11 +378,19 @@ class ShopApiService
     }
 
     /**
-     * Загрузить все товары, отфильтровать по категории и вернуть с пагинацией.
+     * Фильтрация по категории на стороне WebDelivery.
+     *
+     * API магазина не поддерживает фильтр, поэтому:
+     *   1. Выгружаем ВСЕ товары постранично (per_page=100, пока не кончатся страницы).
+     *   2. Оставляем товары, у которых category.slug совпадает с запрошенным.
+     *   3. Применяем пагинацию вручную (array_slice).
+     *
+     * Ограничение: товар подкатегории не попадёт в фильтр родительской
+     * категории — API отдаёт товару только его прямую категорию.
      */
     protected function getProductsFiltered(string $categorySlug, int $page, int $perPage): array
     {
-        // Загружаем все товары (по страницам API)
+        // Шаг 1: выгружаем все страницы API
         $allProducts = [];
         $apiPage = 1;
 
@@ -346,7 +407,7 @@ class ShopApiService
             $data = $response->json();
             $items = $data['data'] ?? $data;
             if (isset($items['data'])) {
-                $items = $items['data'];
+                $items = $items['data']; // вложенный формат
             }
 
             if (empty($items)) {
@@ -358,16 +419,16 @@ class ShopApiService
             $apiPage++;
         } while ($apiPage <= $lastPage);
 
-        // Фильтруем по slug категории (включая подкатегории — проверяем category.slug)
+        // Шаг 2: фильтруем по slug категории товара
         $filtered = array_values(array_filter($allProducts, function ($product) use ($categorySlug) {
             $catSlug = $product['category']['slug'] ?? $product['category_slug'] ?? '';
             return $catSlug === $categorySlug;
         }));
 
-        // Локальная пагинация
+        // Шаг 3: ручная пагинация отфильтрованного массива
         $total = count($filtered);
         $lastPageNum = max(1, (int) ceil($total / $perPage));
-        $page = min($page, $lastPageNum);
+        $page = min($page, $lastPageNum); // защита от page > last_page
         $sliced = array_slice($filtered, ($page - 1) * $perPage, $perPage);
 
         return [
@@ -382,7 +443,8 @@ class ShopApiService
     }
 
     /**
-     * Один товар по ID.
+     * Получить один товар по ID (для карточки товара и списания остатков).
+     * Возвращает null, если товар не найден или магазин недоступен.
      */
     public function getProduct(int|string $id): ?array
     {
@@ -410,7 +472,8 @@ class ShopApiService
     // ─── HTTP PUT ────────────────────────────────────────
 
     /**
-     * Выполнить PUT-запрос с автоматическим логином и retry при 401.
+     * PUT-запрос к магазину. Логика токена и retry идентична get().
+     * Используется для списания остатков.
      */
     protected function put(string $url, array $data = []): \Illuminate\Http\Client\Response|null
     {
@@ -442,7 +505,17 @@ class ShopApiService
     }
 
     /**
-     * Уменьшить количество товара на складе внешнего магазина.
+     * Уменьшить остаток одного товара в магазине.
+     *
+     * Алгоритм:
+     *   1. GET — получить текущий товар и его quantity.
+     *   2. newQty = max(0, текущий − списываемый).
+     *   3. PUT — отправить товар ЦЕЛИКОМ с новым quantity.
+     *
+     * Почему целиком: API магазина требует title и price как обязательные
+     * поля при PUT, частичное обновление возвращает 422.
+     *
+     * @return bool  true — остаток успешно уменьшен
      */
     public function reduceProductQuantity(int $productId, int $quantity): bool
     {
@@ -485,13 +558,20 @@ class ShopApiService
     }
 
     /**
-     * Списать остатки по всем товарам доставки.
+     * Списать остатки по всем позициям заявки на доставку.
+     *
+     * Вызывается из Admin\DeliveryController::updateStatus() при переходе
+     * заявки в статус "confirmed". Ошибки по отдельным товарам собираются
+     * в массив — обработка остальных продолжается.
+     *
+     * @return array{success: bool, errors: string[]}
      */
     public function reduceDeliveryStock(\App\Models\Delivery $delivery): array
     {
         $errors = [];
 
         foreach ($delivery->items as $item) {
+            // Позиция без product_id не связана с магазином — списывать нечего
             if (!$item->product_id) {
                 $errors[] = "Товар «{$item->product_title}» не привязан к магазину (нет product_id)";
                 continue;

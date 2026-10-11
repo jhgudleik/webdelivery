@@ -7,9 +7,17 @@ use App\Models\DeliveryItem;
 use App\Models\User;
 use Tests\TestCase;
 
+/**
+ * Тесты REST API заявок на доставку (JWT-авторизация).
+ *
+ * Guard: 'api' (driver jwt). setUp() авторизует пользователя
+ * через actingAs(..., 'api').
+ *
+ * Покрывает CRUD API с проверками прав доступа,
+ * повторяющими веб-версию.
+ */
 class DeliveryApiTest extends TestCase
 {
-
     protected User $user;
 
     protected function setUp(): void
@@ -19,6 +27,10 @@ class DeliveryApiTest extends TestCase
         $this->actingAs($this->user, 'api');
     }
 
+    /**
+     * GET /api/deliveries — список своих заявок.
+     * Проверяет структуру JSON-ответа (paginator).
+     */
     public function test_deliveries_list(): void
     {
         Delivery::factory()->create(['user_id' => $this->user->id]);
@@ -36,6 +48,10 @@ class DeliveryApiTest extends TestCase
             ]);
     }
 
+    /**
+     * POST /api/deliveries — создание через API.
+     * Проверяет 201, запись в БД и ответ с items.
+     */
     public function test_delivery_can_be_created_via_api(): void
     {
         $response = $this->postJson('/api/deliveries', [
@@ -70,6 +86,9 @@ class DeliveryApiTest extends TestCase
         ]);
     }
 
+    /**
+     * GET /api/deliveries/{id} — просмотр через API.
+     */
     public function test_delivery_can_be_shown_via_api(): void
     {
         $delivery = Delivery::factory()->create(['user_id' => $this->user->id]);
@@ -84,6 +103,10 @@ class DeliveryApiTest extends TestCase
             ]);
     }
 
+    /**
+     * PUT /api/deliveries/{id} — обновление через API.
+     * Только владелец и только статус "new".
+     */
     public function test_delivery_can_be_updated_via_api(): void
     {
         $delivery = Delivery::factory()->create([
@@ -109,6 +132,9 @@ class DeliveryApiTest extends TestCase
         ]);
     }
 
+    /**
+     * Обновление заявки НЕ в статусе "new" возвращает 422.
+     */
     public function test_delivery_cannot_be_updated_if_not_new(): void
     {
         $delivery = Delivery::factory()->create([
@@ -126,6 +152,9 @@ class DeliveryApiTest extends TestCase
         $response->assertStatus(422);
     }
 
+    /**
+     * DELETE /api/deliveries/{id} — удаление через API.
+     */
     public function test_delivery_can_be_deleted_via_api(): void
     {
         $delivery = Delivery::factory()->create(['user_id' => $this->user->id]);
@@ -138,6 +167,9 @@ class DeliveryApiTest extends TestCase
         $this->assertSoftDeleted('deliveries', ['id' => $delivery->id]);
     }
 
+    /**
+     * Нельзя посмотреть чужую заявку через API (403).
+     */
     public function test_user_cannot_see_other_users_delivery(): void
     {
         $delivery = Delivery::factory()->create();

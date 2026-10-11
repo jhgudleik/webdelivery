@@ -9,6 +9,17 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
+/**
+ * Административная панель: управление заявками на доставку.
+ *
+ * Доступ: middleware ['auth', 'admin'].
+ *   - 'auth' — пользователь должен быть залогинен;
+ *   - 'admin' — CheckIfAdmin проверяет users.is_admin === true.
+ *
+ * Основная бизнес-логика:
+ * - При смене статуса на "confirmed" (в updateStatus) списываются
+ *   остатки товаров во внешнем магазине через ShopApiService.
+ */
 class DeliveryController extends Controller
 {
     public function __construct()
@@ -17,7 +28,14 @@ class DeliveryController extends Controller
     }
 
     /**
-     * List all deliveries.
+     * GET /admin/deliveries — список всех заявок.
+     *
+     * Фильтры (GET-параметры):
+     *   - status: фильтр по статусу (new, confirmed, shipped, delivered, cancelled);
+     *   - search: поиск по названию, адресу, телефону, имени/email пользователя.
+     *
+     * withTrashed() — админ видит и удалённые заявки.
+     * Пагинация 20 на страницу.
      */
     public function index(Request $request): View
     {
@@ -50,7 +68,10 @@ class DeliveryController extends Controller
     }
 
     /**
-     * Show single delivery.
+     * GET /admin/deliveries/{delivery} — карточка заявки.
+     *
+     * Подгружаем items и user для отображения в вьюхе.
+     * statuses — для селекта смены статуса.
      */
     public function show(Delivery $delivery): View
     {
@@ -63,8 +84,26 @@ class DeliveryController extends Controller
     }
 
     /**
-     * Update delivery status and admin comment.
-     * When status changes to "confirmed" — reduce product stock on external shop.
+     * PATCH /admin/deliveries/{delivery}/status — смена статуса + комментарий.
+     *
+     * Валидация: status из enum, admin_comment до 1000 символов.
+     *
+     * Ключевая логика: если статус меняется НА "confirmed" И РАНЬШЕ
+     * НЕ БЫЛ "confirmed" — списываем остатки товаров во внешнем магазине.
+     *
+     * Логика списания:
+     *   1. Грузим позиции заявки ($delivery->load('items')).
+     *   2. Вызываем ShopApiService::reduceDeliveryStock($delivery).
+     *   3. Там для каждой позиции с product_id вызывается PUT в магазин.
+     *
+     * Результат:
+     *   - успех → flash success («Остатки списаны»)
+     *   - ошибки у части товаров → flash warning со списком ошибок,
+     *     но статус ВСЁ РАВНО сохраняется (транзакционности нет).
+     *   - полная неудача → warning с ошибками.
+     *
+     * Важно: проверка ($newStatus === 'confirmed' && $oldStatus !== 'confirmed')
+     * предотвращает двойное списание при повторном подтверждении.
      */
     public function updateStatus(Request $request, Delivery $delivery, ShopApiService $shopApi): RedirectResponse
     {
@@ -104,7 +143,10 @@ class DeliveryController extends Controller
     }
 
     /**
-     * Soft-delete delivery.
+     * DELETE /admin/deliveries/{delivery} — мягкое удаление.
+     *
+     * SoftDeletes: deleted_at проставляется, запись остаётся в БД.
+     * Админ видит удалённые через withTrashed() в index.
      */
     public function destroy(Delivery $delivery): RedirectResponse
     {

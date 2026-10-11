@@ -11,10 +11,18 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
+/**
+ * Личный кабинет пользователя.
+ *
+ * Доступен только авторизованным (routes/web.php middleware 'auth').
+ * Позволяет менять имя, email, аватар, пароль.
+ */
 class ProfileController extends Controller
 {
     /**
-     * Показать профиль пользователя.
+     * GET /profile — показать профиль.
+     *
+     * Отдаёт вьюху auth.profile с текущим пользователем.
      */
     public function profile(): View
     {
@@ -24,7 +32,19 @@ class ProfileController extends Controller
     }
 
     /**
-     * Обновить имя, email и аватар.
+     * PATCH /profile — обновить имя, email, аватар.
+     *
+     * Валидация:
+     * - name: обязательно, строка, макс 255;
+     * - email: обязательно, email, уникально (кроме текущего пользователя);
+     * - avatar: опционально, картинка jpg/jpeg/png/webp, макс 2 МБ.
+     *
+     * Если загружен новый аватар:
+     *   1. Удаляется старый файл из storage/app/public/avatars/
+     *   2. Новый сохраняется через store('avatars', 'public')
+     *   3. Путь записывается в user->avatar
+     *
+     * Редирект обратно с флеш-сообщением 'profile-updated'.
      */
     public function update(Request $request): RedirectResponse
     {
@@ -95,7 +115,15 @@ class ProfileController extends Controller
     }
 
     /**
-     * Изменить пароль.
+     * PUT /profile/password — смена пароля.
+     *
+     * Валидация:
+     * - current_password: обязательно, должно совпадать с текущим
+     *   (валидатор 'current_password' проверяет через Hash::check);
+     * - password: обязательно, подтверждённое (confirmed), мин 8 символов.
+     *
+     * Хэшируется через Hash::make().
+     * Редирект с 'password-updated'.
      */
     public function updatePassword(Request $request): RedirectResponse
     {
@@ -130,7 +158,10 @@ class ProfileController extends Controller
     }
 
     /**
-     * Удалить аватар.
+     * DELETE /profile/avatar — удалить аватар.
+     *
+     * Удаляет файл из storage/app/public/avatars/ и обнуляет поле в БД.
+     * Редирект с 'avatar-deleted'.
      */
     public function deleteAvatar(Request $request): RedirectResponse
     {

@@ -8,14 +8,15 @@
     <title>@yield('title', 'Сервис доставки')</title>
     <link rel="icon" type="image/png" href="/favicon.png">
 
-    <!-- Bootstrap 5 CSS -->
+    <!-- Bootstrap 5 CSS (CDN) -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome Icons -->
+    <!-- Font Awesome Icons (CDN) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
+    <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
+        /* Базовые стили и CSS-переменные через нативный CSS */
         * {
             font-family: 'Inter', sans-serif;
         }
@@ -25,8 +26,9 @@
             min-height: 100vh;
         }
         .main-content {
-            flex: 1;
+            flex: 1; /* растягивается между хедером и футером */
         }
+        /* Кастомная навигация: тёмный градиент + акцент #e94560 */
         .navbar-custom {
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             box-shadow: 0 2px 10px rgba(0,0,0,0.3);
@@ -69,7 +71,7 @@
             transform: translateY(-2px);
         }
 
-        /* Аватар пользователя */
+        /* Аватар пользователя в навбаре и дропдауне */
         .avatar-circle {
             width: 40px;
             height: 40px;
@@ -82,7 +84,6 @@
             background: #ffffff;
             color: #fff;
         }
-
         .avatar-circle img {
             width: 100%;
             height: 100%;
@@ -94,6 +95,7 @@
             height: 60px;
         }
 
+        /* Кастомные дропдауны */
         .dropdown-menu {
             border-radius: 10px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.15);
@@ -113,11 +115,13 @@
             margin-right: 8px;
             color: #e94560;
         }
+
+        /* Футер: тот же градиент, что и хедер */
         .footer-custom {
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             color: rgba(255,255,255,0.8);
             padding: 3rem 0 1.5rem;
-            margin-top: auto;
+            margin-top: auto; /* прижимается к низу */
         }
         .footer-custom h5 {
             color: #fff;
@@ -154,7 +158,7 @@
             border-color: rgba(255,255,255,0.1) !important;
         }
 
-        /* Карточки */
+        /* Карточки: скруглённые, с тенью, ховер-эффект */
         .card {
             border-radius: 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.06);
@@ -166,7 +170,7 @@
             transform: translateY(-2px);
         }
 
-        /* Кнопки */
+        /* Кнопки: градиент, скругление, ховер */
         .btn-primary {
             background: linear-gradient(135deg, #e94560, #c73652);
             border: none;
@@ -180,7 +184,7 @@
             box-shadow: 0 6px 16px rgba(233, 69, 96, 0.35);
         }
 
-        /* Формы */
+        /* Формы: скруглённые, с фокусом по акценту */
         .form-control, .form-select {
             border-radius: 10px;
             padding: 0.65rem 1rem;
@@ -394,9 +398,10 @@
     </div>
 </footer>
 
-<!-- Bootstrap JS Bundle -->
+<!-- Bootstrap JS Bundle (Popper + Bootstrap) -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
+<!-- Скрипты из вьюх (через @push('scripts') в create/edit/profile) -->
 @stack('scripts')
 </body>
 </html>

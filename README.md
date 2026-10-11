@@ -3,6 +3,9 @@
 Веб-приложение для управления доставками товаров из интернет-магазинов.  
 Товары заказываются из внешнего магазина (на другом сервере) по REST API.
 
+Презентация доступна по адресу: [Presentation](https://docs.google.com/presentation/d/1VwCl2lf4ZWX46h5Aib2xqQCozENXzq2D3NJptHoE-98/edit?slide=id.p8#slide=id.p8)
+https://docs.google.com/presentation/d/1VwCl2lf4ZWX46h5Aib2xqQCozENXzq2D3NJptHoE-98/edit?slide=id.p8#slide=id.p8
+
 #  Подтверждение заявки и списание товара со склада
 
 ![Сonfirmation](pic/confirmed.gif)

@@ -7,19 +7,34 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
+/**
+ * Тесты аутентификации (web-интерфейс, сессии).
+ *
+ * Покрывает:
+ * - доступ к страницам входа/регистрации гостю и авторизованному;
+ * - успешный логин, регистрацию, логаут.
+ */
 class AuthTest extends TestCase
 {
-
+    /**
+     * Гость может открыть страницу входа.
+     */
     public function test_login_page_not_auth(): void
     {
         $this->get(route('login'))->assertOk();
     }
 
+    /**
+     * Гость может открыть страницу регистрации.
+     */
     public function test_register_page_not_auth(): void
     {
         $this->get(route('register'))->assertOk();
     }
 
+    /**
+     * Авторизованный пользователь перенаправляется с /register.
+     */
     public function test_register_page_redirects_when_auth(): void
     {
         $user = User::factory()->create();
@@ -29,6 +44,9 @@ class AuthTest extends TestCase
             ->assertStatus(302);
     }
 
+    /**
+     * Авторизованный пользователь перенаправляется с /login.
+     */
     public function test_login_page_redirects_when_auth(): void
     {
         $user = User::factory()->create();
@@ -38,6 +56,9 @@ class AuthTest extends TestCase
             ->assertStatus(302);
     }
 
+    /**
+     * Успешный логин существующего пользователя.
+     */
     public function test_login(): void
     {
         $user = User::factory([
@@ -55,6 +76,9 @@ class AuthTest extends TestCase
         $this->assertAuthenticated();
     }
 
+    /**
+     * Регистрация нового пользователя.
+     */
     public function test_register(): void
     {
         $data = [
@@ -79,6 +103,9 @@ class AuthTest extends TestCase
         $this->assertTrue(Hash::check($data['password'], $user->password));
     }
 
+    /**
+     * Логаут пользователя.
+     */
     public function test_logout(): void
     {
         $user = User::factory([

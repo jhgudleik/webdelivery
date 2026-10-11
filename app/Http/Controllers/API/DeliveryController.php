@@ -8,10 +8,27 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
+/**
+ * REST API для заявок на доставку (JWT-авторизация).
+ *
+ * Middleware: 'auth:api' (guard 'api' с driver 'jwt').
+ *
+ * Правила доступа (повторяют веб-версию):
+ * - index/store — любой авторизованный;
+ * - show — владелец или админ (иначе 403);
+ * - update — только владелец, только статус "new" (иначе 422);
+ * - destroy — владелец или админ.
+ *
+ * Все ответы — JSON:
+ *   { success: bool, data: ..., message: string }
+ */
 class DeliveryController extends Controller
 {
     /**
-     * List current user's deliveries.
+     * GET /api/deliveries — список своих заявок.
+     *
+     * Пагинация 10, с items. Формат ответа:
+     * { success: true, data: LengthAwarePaginator }
      */
     public function index(): JsonResponse
     {
@@ -28,7 +45,11 @@ class DeliveryController extends Controller
     }
 
     /**
-     * Store a new delivery.
+     * POST /api/deliveries — создать заявку.
+     *
+     * Валидация та же, что и в веб-версии.
+     * product_id опционален (для списания остатков при подтверждении).
+     * Ответ 201 с созданной заявкой (подгружены items).
      */
     public function store(Request $request): JsonResponse
     {
@@ -74,7 +95,10 @@ class DeliveryController extends Controller
     }
 
     /**
-     * Show single delivery.
+     * GET /api/deliveries/{delivery} — просмотр заявки.
+     *
+     * Доступ: владелец или админ. Иначе 403.
+     * Подгружаем items и user.
      */
     public function show(Delivery $delivery): JsonResponse
     {
@@ -94,7 +118,14 @@ class DeliveryController extends Controller
     }
 
     /**
-     * Update delivery (only if status is "new").
+     * PUT /api/deliveries/{delivery} — обновить заявку.
+     *
+     * Доступ: только владелец (админ тут не считается, иначе 403).
+     * Статус должен быть "new" — иначе 422.
+     *
+     * Валидация та же, что и при создании.
+     * Позиции полностью заменяются (delete + create).
+     * total_price пересчитывается.
      */
     public function update(Request $request, Delivery $delivery): JsonResponse
     {
@@ -132,6 +163,7 @@ class DeliveryController extends Controller
             'phone'            => $validated['phone'],
         ]);
 
+        // Полная замена позиций
         $delivery->items()->delete();
         foreach ($validated['items'] as $item) {
             $delivery->items()->create([
@@ -154,7 +186,10 @@ class DeliveryController extends Controller
     }
 
     /**
-     * Delete delivery.
+     * DELETE /api/deliveries/{delivery} — мягкое удаление.
+     *
+     * Доступ: владелец или админ. Иначе 403.
+     * SoftDeletes — запись остаётся в БД.
      */
     public function destroy(Delivery $delivery): JsonResponse
     {

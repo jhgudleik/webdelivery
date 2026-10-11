@@ -94,6 +94,10 @@
         let itemIndex = 0;
 
         // Pre-fill from query params (when coming from catalog)
+        // Кнопка в: resources/views/catalog/show.blade.php, строки 48–57:
+        // Она передаёт данные товара в query-параметрах:
+        //  блок попадает на страницу через @stack('scripts') 
+        // в конце resources/views/layouts/main.blade.php
         const params = new URLSearchParams(window.location.search);
         const preId = params.get('product_id');
         const preTitle = params.get('product_title');

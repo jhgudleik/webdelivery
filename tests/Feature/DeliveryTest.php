@@ -7,9 +7,21 @@ use App\Models\DeliveryItem;
 use App\Models\User;
 use Tests\TestCase;
 
+/**
+ * Тесты веб-интерфейса заявок на доставку.
+ *
+ * Покрывает полный CRUD пользователя:
+ * - доступ гостя/пользователя;
+ * - создание, просмотр, редактирование, удаление;
+ * - проверки прав (свой/чужой, статус new);
+ * - пересчёт итоговой суммы.
+ *
+ * Использует RefreshDatabase (через Pest.php), каждая тест-метод
+ * работает на чистой БД.
+ */
 class DeliveryTest extends TestCase
 {
-
+    /** @var User авторизованный пользователь для тестов */
     protected User $user;
 
     protected function setUp(): void
@@ -20,12 +32,18 @@ class DeliveryTest extends TestCase
 
     // ─── Index ───────────────────────────────────────────
 
+    /**
+     * Гость перенаправляется на логин.
+     */
     public function test_guest_cannot_see_deliveries(): void
     {
         $this->get(route('deliveries.index'))
             ->assertRedirect(route('login'));
     }
 
+    /**
+     * Авторизованный пользователь видит страницу списка.
+     */
     public function test_user_can_see_deliveries_page(): void
     {
         $this->actingAs($this->user)
@@ -33,6 +51,9 @@ class DeliveryTest extends TestCase
             ->assertOk();
     }
 
+    /**
+     * Пользователь видит только СВОИ заявки.
+     */
     public function test_user_sees_only_own_deliveries(): void
     {
         $myDelivery = Delivery::factory()->create(['user_id' => $this->user->id]);
@@ -47,6 +68,9 @@ class DeliveryTest extends TestCase
 
     // ─── Create ──────────────────────────────────────────
 
+    /**
+     * Авторизованный пользователь видит форму создания.
+     */
     public function test_user_can_see_create_form(): void
     {
         $this->actingAs($this->user)
@@ -54,6 +78,10 @@ class DeliveryTest extends TestCase
             ->assertOk();
     }
 
+    /**
+     * Успешное создание заявки с товарами.
+     * Проверяет запись в deliveries и delivery_items, включая product_id.
+     */
     public function test_user_can_create_delivery(): void
     {
         $this->actingAs($this->user);
@@ -94,6 +122,9 @@ class DeliveryTest extends TestCase
         ]);
     }
 
+    /**
+     * Валидация: title обязателен.
+     */
     public function test_create_delivery_requires_title(): void
     {
         $this->actingAs($this->user)
@@ -106,6 +137,9 @@ class DeliveryTest extends TestCase
             ->assertSessionHasErrors('title');
     }
 
+    /**
+     * Валидация: items не может быть пустым.
+     */
     public function test_create_delivery_requires_items(): void
     {
         $this->actingAs($this->user)
@@ -118,8 +152,11 @@ class DeliveryTest extends TestCase
             ->assertSessionHasErrors('items');
     }
 
-    // ─── Show ────────────────────────────────────────────
+    // ─── Show ─────────────────────────────────────────────
 
+    /**
+     * Пользователь видит свою заявку.
+     */
     public function test_user_can_see_own_delivery(): void
     {
         $delivery = Delivery::factory()->create(['user_id' => $this->user->id]);
@@ -131,6 +168,9 @@ class DeliveryTest extends TestCase
             ->assertSee($delivery->title);
     }
 
+    /**
+     * Чужую заявку посмотреть нельзя (403).
+     */
     public function test_user_cannot_see_other_delivery(): void
     {
         $delivery = Delivery::factory()->create();
@@ -142,6 +182,9 @@ class DeliveryTest extends TestCase
 
     // ─── Edit ────────────────────────────────────────────
 
+    /**
+     * Редактировать можно свою заявку со статусом "new".
+     */
     public function test_user_can_edit_own_new_delivery(): void
     {
         $delivery = Delivery::factory()->create([
@@ -154,6 +197,9 @@ class DeliveryTest extends TestCase
             ->assertOk();
     }
 
+    /**
+     * Редактировать нельзя подтверждённую заявку (редирект с ошибкой).
+     */
     public function test_user_cannot_edit_confirmed_delivery(): void
     {
         $delivery = Delivery::factory()->create([
@@ -168,6 +214,9 @@ class DeliveryTest extends TestCase
 
     // ─── Update ──────────────────────────────────────────
 
+    /**
+     * Успешное обновление своей заявки в статусе "new".
+     */
     public function test_user_can_update_own_new_delivery(): void
     {
         $delivery = Delivery::factory()->create([
@@ -194,6 +243,10 @@ class DeliveryTest extends TestCase
 
     // ─── Delete ──────────────────────────────────────────
 
+    /**
+     * Пользователь может мягко удалить свою заявку.
+     * Проверяет SoftDeletes через assertSoftDeleted.
+     */
     public function test_user_can_delete_own_delivery(): void
     {
         $delivery = Delivery::factory()->create(['user_id' => $this->user->id]);
@@ -207,6 +260,9 @@ class DeliveryTest extends TestCase
 
     // ─── Total price ─────────────────────────────────────
 
+    /**
+     * Пересчёт итоговой суммы: Delivery::recalculateTotal().
+     */
     public function test_delivery_recalculates_total(): void
     {
         $delivery = Delivery::factory()->create(['user_id' => $this->user->id]);
